@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System;
 using System.IO;
+using Microsoft.Extensions.Logging;
 
 
 namespace BackupService.HostedServices
@@ -17,14 +18,27 @@ namespace BackupService.HostedServices
     public class BackupHostedService : IHostedService
     {
         public const string JsonPath = "C:\\Users\\%User%\\AppData\\Local\\BackupManager\\JsonConfig.json";
-        public Task StartAsync(CancellationToken cancellationToken)
+        private readonly ILogger<BackupHostedService> _logger;
+
+        private Task _executingTask;
+        private CancellationTokenSource _cts;
+
+        public BackupHostedService(ILogger<BackupHostedService> logger)
         {
-            var task = Task.Run(() => Worker());
-            return task;
+            _logger = logger;
         }
 
-        private void Worker()
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
+            _logger.LogInformation("Iniciando StartAsync");
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _executingTask = Task.Run(() => Worker(_cts.Token), cancellationToken);
+            //return _executingTask.IsCompleted ? _executingTask : Task.CompletedTask;
+        }
+
+        private async void Worker(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation("Iniciando serviço");
             string BackupPath = string.Empty;
             JsonConfig config = null;
             while (true)
@@ -32,24 +46,33 @@ namespace BackupService.HostedServices
                 try
                 {
                     config = DesserializerJsonConfig();
+                    _logger.LogInformation("Json desserializado");
                 }
                 catch (Exception ex)
                 {
+                    _logger.LogError("Impossivel desserializar objeto.");
                     Console.WriteLine("Impossivel desserializar objeto.");
                 }
 
                 BackupPath = config?.BackupPath;
-
-                if (config != null && config.Games != null && config.Games.Count > 0)
+                try
                 {
-                    for (int i = 0; i < config.Games.Count; i++)
+                    if (config != null && config.Games != null && config.Games.Count > 0)
                     {
-                        string copyPath = $"{config.Games[i].Path}";
-                        string finalBackupPath = $"{BackupPath}\\{config.Games[i].Name}";
-                        CopyFiles(copyPath, finalBackupPath);
+                        for (int i = 0; i < config.Games.Count; i++)
+                        {
+                            string copyPath = $"{config.Games[i].Path}";
+                            string finalBackupPath = $"{BackupPath}\\{config.Games[i].Name}";
+                            CopyFiles(copyPath, finalBackupPath);
+                        }
                     }
+                    _logger.LogInformation("Arquivos copiados.");
                 }
-                Thread.Sleep(120000);
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex.Message);
+                }
+                await Task.Delay(5000, stoppingToken);
             }
         }
 
@@ -102,9 +125,23 @@ namespace BackupService.HostedServices
 
         }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+        public async Task StopAsync(CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            _logger.LogInformation("Parando serviço");
+
+            if (_executingTask == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _cts.Cancel();
+            }
+            finally
+            {
+                await Task.WhenAny(_executingTask, Task.Delay(Timeout.Infinite, cancellationToken));
+            }
         }
     }
 }

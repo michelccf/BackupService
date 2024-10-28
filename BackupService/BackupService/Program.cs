@@ -2,6 +2,7 @@
 using BackupService.HostedServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace BackupService
 {
@@ -9,7 +10,14 @@ namespace BackupService
     {
         public static void Main(string[] args)
         {
-            CreateHostBuilder(args).Build().Run();
+            try
+            {
+                CreateHostBuilder(args).Build().Run();
+            }
+            catch (Exception ex)
+            {
+                File.WriteAllText("C:\\Users\\miche\\Documents\\Meus Services\\Erros\\BackupService.txt", ex.ToString());
+            }
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
@@ -17,6 +25,15 @@ namespace BackupService
                 .ConfigureServices((hostContext, services) =>
                 {
                     new ConfigurationServices(services);
+                }).ConfigureLogging(logging =>
+                {
+                    logging.ClearProviders();
+                    logging.AddConsole();
+                    logging.AddEventLog();
+                    logging.AddEventLog(settings =>
+                    {
+                        settings.SourceName = "BackupService";
+                    });
                 })
                 .UseWindowsService();
     }
