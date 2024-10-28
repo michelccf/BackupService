@@ -3,16 +3,24 @@ using BackupService.HostedServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace BackupService
 {
     public class Program
     {
-        public static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             try
             {
-                CreateHostBuilder(args).Build().Run();
+                File.WriteAllText("C:\\Users\\miche\\Documents\\Meus Services\\Erros\\BackupService.txt", "Iniciou");
+                IHost host = Host.CreateDefaultBuilder(args)
+                .UseWindowsService(options => { options.ServiceName = "BackupService2"; })
+                .ConfigureServices(services =>
+                {
+                    services.AddHostedService<BackupHostedService>();
+                }).Build();
+                await host.RunAsync();
             }
             catch (Exception ex)
             {
@@ -20,21 +28,6 @@ namespace BackupService
             }
         }
 
-        public static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)
-                .ConfigureServices((hostContext, services) =>
-                {
-                    new ConfigurationServices(services);
-                }).ConfigureLogging(logging =>
-                {
-                    logging.ClearProviders();
-                    logging.AddConsole();
-                    logging.AddEventLog();
-                    logging.AddEventLog(settings =>
-                    {
-                        settings.SourceName = "BackupService";
-                    });
-                })
-                .UseWindowsService();
+   
     }
 }

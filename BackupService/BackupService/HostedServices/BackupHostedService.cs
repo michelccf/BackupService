@@ -15,9 +15,9 @@ using Microsoft.Extensions.Logging;
 
 namespace BackupService.HostedServices
 {
-    public class BackupHostedService : IHostedService
+    public class BackupHostedService : BackgroundService
     {
-        public const string JsonPath = "C:\\Users\\%User%\\AppData\\Local\\BackupManager\\JsonConfig.json";
+        public const string JsonPath = "C:\\ProgramData\\BackupManager\\JsonConfig.json";
         private readonly ILogger<BackupHostedService> _logger;
 
         private Task _executingTask;
@@ -28,17 +28,19 @@ namespace BackupService.HostedServices
             _logger = logger;
         }
 
-        public async Task StartAsync(CancellationToken cancellationToken)
+        protected override async Task ExecuteAsync(CancellationToken cancellationToken)
         {
+            File.WriteAllText("C:\\Users\\miche\\Documents\\Meus Services\\Erros\\BackupService.txt", "Entrou no execute");
             _logger.LogInformation("Iniciando StartAsync");
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _executingTask = Task.Run(() => Worker(_cts.Token), cancellationToken);
+             Worker(_cts.Token);
             //return _executingTask.IsCompleted ? _executingTask : Task.CompletedTask;
         }
 
         private async void Worker(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Iniciando serviço");
+            GenerateLogFile("Entrou no Worker" + Environment.NewLine);
+            _logger.LogInformation("Iniciando serviço" + Environment.NewLine);
             string BackupPath = string.Empty;
             JsonConfig config = null;
             while (true)
@@ -46,12 +48,13 @@ namespace BackupService.HostedServices
                 try
                 {
                     config = DesserializerJsonConfig();
+                    GenerateLogFile("Desserializou" + Environment.NewLine);
                     _logger.LogInformation("Json desserializado");
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError("Impossivel desserializar objeto.");
-                    Console.WriteLine("Impossivel desserializar objeto.");
+                    GenerateLogFile(ex.Message);
                 }
 
                 BackupPath = config?.BackupPath;
@@ -59,21 +62,33 @@ namespace BackupService.HostedServices
                 {
                     if (config != null && config.Games != null && config.Games.Count > 0)
                     {
+                        GenerateLogFile("Entrou no if" + Environment.NewLine);
                         for (int i = 0; i < config.Games.Count; i++)
                         {
+                            GenerateLogFile("Achou Elementos" + Environment.NewLine);
                             string copyPath = $"{config.Games[i].Path}";
                             string finalBackupPath = $"{BackupPath}\\{config.Games[i].Name}";
                             CopyFiles(copyPath, finalBackupPath);
                         }
+                    }
+                    else 
+                    {
+                        GenerateLogFile("Caiu no else" + Environment.NewLine);
                     }
                     _logger.LogInformation("Arquivos copiados.");
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex.Message);
+                    GenerateLogFile(ex.Message + Environment.NewLine);
                 }
-                await Task.Delay(5000, stoppingToken);
+                Thread.Sleep(5000);
             }
+        }
+
+        private void GenerateLogFile(string Message)
+        {
+            File.AppendAllText("C:\\Users\\miche\\Documents\\Meus Services\\Erros\\BackupService.txt", Message);
         }
 
         private void CopyFiles(string PathOrign, string BackupPath)
@@ -112,12 +127,22 @@ namespace BackupService.HostedServices
 
         private JsonConfig DesserializerJsonConfig()
         {
-            string userName = System.Security.Principal.WindowsIdentity.GetCurrent().Name.Split('\\').LastOrDefault();
-            if (File.Exists(JsonPath.Replace("%User%", userName)))
+            GenerateLogFile("Metodo Serializer" + Environment.NewLine);
+            
+            if (File.Exists(JsonPath))
             {
-                string json = File.ReadAllText(JsonPath.Replace("%User%", userName));
-                JsonConfig objeto = new JsonConfig();
-                objeto = JsonConvert.DeserializeObject<JsonConfig>(json);
+                JsonConfig objeto = null;
+                try
+                {
+                    string json = File.ReadAllText(JsonPath);
+                    GenerateLogFile(json);
+                    objeto = new JsonConfig();
+                    objeto = JsonConvert.DeserializeObject<JsonConfig>(json);
+                }
+                catch (Exception ex)
+                {
+                    File.WriteAllText("C:\\Users\\miche\\Documents\\Meus Services\\Erros\\BackupService.txt", $"Exception no json: {ex.Message}");
+                }
                 return objeto;
             }
 
