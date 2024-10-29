@@ -8,7 +8,10 @@ namespace BackupService.Models
 {
     public class JsonConfig
     {
-        public string BackupPath { get; set; }
+        public bool Horas { get; set; }
+        public bool Minutos { get; set; }
+        public bool Segundos { get; set; }
+        public int Tempo { get; set; }
         public List<Game> Games { get; set; }
     }
 }

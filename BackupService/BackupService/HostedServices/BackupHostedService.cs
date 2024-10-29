@@ -18,6 +18,7 @@ namespace BackupService.HostedServices
     public class BackupHostedService : BackgroundService
     {
         public const string JsonPath = "C:\\ProgramData\\BackupManager\\JsonConfig.json";
+        private int Timer = 0;
         private readonly ILogger<BackupHostedService> _logger;
 
         private Task _executingTask;
@@ -30,7 +31,6 @@ namespace BackupService.HostedServices
 
         protected override async Task ExecuteAsync(CancellationToken cancellationToken)
         {
-            File.WriteAllText("C:\\Users\\miche\\Documents\\Meus Services\\Erros\\BackupService.txt", "Entrou no execute");
             _logger.LogInformation("Iniciando StartAsync");
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
              Worker(_cts.Token);
@@ -39,16 +39,14 @@ namespace BackupService.HostedServices
 
         private async void Worker(CancellationToken stoppingToken)
         {
-            GenerateLogFile("Entrou no Worker" + Environment.NewLine);
+            
             _logger.LogInformation("Iniciando serviço" + Environment.NewLine);
-            string BackupPath = string.Empty;
             JsonConfig config = null;
             while (true)
             {
                 try
                 {
                     config = DesserializerJsonConfig();
-                    GenerateLogFile("Desserializou" + Environment.NewLine);
                     _logger.LogInformation("Json desserializado");
                 }
                 catch (Exception ex)
@@ -57,17 +55,15 @@ namespace BackupService.HostedServices
                     GenerateLogFile(ex.Message);
                 }
 
-                BackupPath = config?.BackupPath;
+                
                 try
                 {
                     if (config != null && config.Games != null && config.Games.Count > 0)
                     {
-                        GenerateLogFile("Entrou no if" + Environment.NewLine);
                         for (int i = 0; i < config.Games.Count; i++)
                         {
-                            GenerateLogFile("Achou Elementos" + Environment.NewLine);
                             string copyPath = $"{config.Games[i].Path}";
-                            string finalBackupPath = $"{BackupPath}\\{config.Games[i].Name}";
+                            string finalBackupPath = $"{config.Games[i].Pathbackup}\\{config.Games[i].Name}";
                             CopyFiles(copyPath, finalBackupPath);
                         }
                     }
@@ -82,7 +78,7 @@ namespace BackupService.HostedServices
                     _logger.LogError(ex.Message);
                     GenerateLogFile(ex.Message + Environment.NewLine);
                 }
-                Thread.Sleep(5000);
+                Thread.Sleep(Timer > 0 ? Timer : 120000);
             }
         }
 
@@ -127,17 +123,15 @@ namespace BackupService.HostedServices
 
         private JsonConfig DesserializerJsonConfig()
         {
-            GenerateLogFile("Metodo Serializer" + Environment.NewLine);
-            
             if (File.Exists(JsonPath))
             {
                 JsonConfig objeto = null;
                 try
                 {
                     string json = File.ReadAllText(JsonPath);
-                    GenerateLogFile(json);
                     objeto = new JsonConfig();
                     objeto = JsonConvert.DeserializeObject<JsonConfig>(json);
+                    DefineTimer(objeto);
                 }
                 catch (Exception ex)
                 {
@@ -148,6 +142,26 @@ namespace BackupService.HostedServices
 
             return null;
 
+        }
+
+        private void DefineTimer(JsonConfig? objeto)
+        {
+            int Millisecond = 1000;
+            int DefinedTime = objeto.Tempo;
+            if (objeto.Horas)
+            {
+                int Hour = 3600;
+                Timer = (DefinedTime * Hour) * Millisecond;
+            }
+            else if (objeto.Minutos)
+            {
+                int Minute = 60;
+                Timer = (DefinedTime * Minute) * Millisecond;
+            }
+            else
+            {
+                Timer = DefinedTime * Millisecond;
+            }
         }
 
         public async Task StopAsync(CancellationToken cancellationToken)
