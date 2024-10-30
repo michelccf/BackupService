@@ -63,7 +63,7 @@ namespace BackupService.HostedServices
                         for (int i = 0; i < config.Games.Count; i++)
                         {
                             string copyPath = $"{config.Games[i].Path}";
-                            string finalBackupPath = $"{config.Games[i].Pathbackup}\\{config.Games[i].Name}";
+                            string finalBackupPath = $"{config.Games[i].Pathbackup}\\{config.Games[i].Path.Split('\\').LastOrDefault()}";
                             CopyFiles(copyPath, finalBackupPath);
                         }
                     }
