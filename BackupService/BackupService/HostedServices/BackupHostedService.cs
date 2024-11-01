@@ -1,17 +1,12 @@
 ﻿using BackupService.Models;
 using Microsoft.Extensions.Hosting;
-using Microsoft.VisualBasic;
 using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System;
-using System.IO;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Text;
+using System.IO;
 
 
 namespace BackupService.HostedServices
@@ -59,7 +54,8 @@ namespace BackupService.HostedServices
                     GenerateLogFile(ex.Message);
                 }
 
-                await Task.Delay(Timer > 0 ? Timer : 1000);
+                //Thread.Sleep(Timer > 0 ? Timer : 1000);
+                await Task.Delay((Timer > 0 ? Timer : 1000));
                 GenerateLogFile("Iniciou Backup" + Environment.NewLine);
 
                 try
@@ -76,37 +72,52 @@ namespace BackupService.HostedServices
                     }
                     else 
                     {
-                        GenerateLogFile("Caiu no else" + Environment.NewLine);
+                        GenerateLogFile("Caiu no else");
                     }
                     _logger.LogInformation("Arquivos copiados.");
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex.Message);
-                    GenerateLogFile(ex.Message + Environment.NewLine);
+                    GenerateLogFile(ex.Message );
                 }
             }
         }
 
         private void CreateOrSetValueRegistryKey()
         {
-            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(KeyName))
+            try
             {
-                if (key != null)
+                using (RegistryKey key = Registry.LocalMachine.CreateSubKey(KeyName))
                 {
-                    key.SetValue("LastBackup", DateTime.Now.ToString());
+                    if (key != null)
+                    {
+                        key.SetValue("LastBackup", DateTime.Now.ToString());
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                GenerateLogFile($"Erro ao criar Key: {ex.Message}");
             }
         }
 
         private DateTime? GetRegistryKey()
         {
-            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(KeyName))
+            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(KeyName.Replace("SOFTEARE", "WOW6432Node")))
             {
-                if (key != null)
+                try
                 {
-                    DateTime lastBackup = Convert.ToDateTime(key.GetValue("LastBackup"));
-                    return lastBackup;
+                    if (key != null)
+                    {
+                        DateTime lastBackup = Convert.ToDateTime(key.GetValue("LastBackup"));
+                        GenerateLogFile($"RegistryKey Obteve lastBackup: {lastBackup}");
+                        return lastBackup;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    GenerateLogFile($"Erro ao obter Key: {ex.Message}");
                 }
                 return null;
             }
@@ -114,7 +125,91 @@ namespace BackupService.HostedServices
 
         private void GenerateLogFile(string Message)
         {
-            File.AppendAllText("C:\\Users\\miche\\Documents\\Meus Services\\Erros\\BackupService.txt", Message);
+            string ErrorDirectory = "C:\\ProgramData\\BackupManager\\Erros\\";
+            string ErrorFile = "C:\\ProgramData\\BackupManager\\Erros\\BackupService.txt";
+            if (!File.Exists("ErrorDirectory"))
+            {
+                DirectoryInfo info = Directory.CreateDirectory("C:\\ProgramData\\BackupManager\\Erros\\");
+                DefineSecurityFolder(info);
+            }
+
+            if (!File.Exists(ErrorFile))
+            {
+                File.Create(ErrorFile);
+                //DefineSecurityFile(ErrorFile);
+            }
+            try
+            {
+                File.AppendAllText("C:\\ProgramData\\BackupManager\\Erros\\BackupService.txt", Message + Environment.NewLine);
+            }
+            catch (IOException ex)
+            {
+                Thread.Sleep(1000);
+                GenerateLogFile(Message);
+            }
+        }
+
+        private void DefineSecurityFile(string errorFile)
+        {
+            try
+            {
+               FileInfo info = new FileInfo(errorFile);
+
+                var file = FileSystemAclExtensions.GetAccessControl(info);
+
+                // Obter o usuário atual
+                WindowsIdentity currentUser = WindowsIdentity.GetCurrent();
+                SecurityIdentifier userSid = currentUser.User;
+
+                // Definir as permissões
+                FileSystemAccessRule accessRule = new FileSystemAccessRule(
+                    userSid,
+                    FileSystemRights.FullControl,
+                    InheritanceFlags.None,
+                    PropagationFlags.None,
+                    AccessControlType.Allow);
+
+                // Adicionar a regra de acesso
+                file.AddAccessRule(accessRule);
+
+                // Aplicar as permissões ao arquivo
+                FileSystemAclExtensions.SetAccessControl(info, file);
+            }
+            catch (Exception ex)
+            {
+                GenerateLogFile($"Erro ao definir segurança do arquivo de erros: {ex.Message}");
+            }
+        }
+
+        private void DefineSecurityFolder(DirectoryInfo info)
+        {
+            try
+            {
+                // Obter a segurança do diretório
+                DirectorySecurity dirSecurity = info.GetAccessControl();
+
+                // Obter o usuário atual
+                WindowsIdentity currentUser = WindowsIdentity.GetCurrent();
+                SecurityIdentifier userSid = currentUser.User;
+
+                // Definir as permissões
+                FileSystemAccessRule accessRule = new FileSystemAccessRule(
+                    userSid,
+                    FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                    PropagationFlags.None,
+                    AccessControlType.Allow);
+
+                // Adicionar a regra de acesso
+                dirSecurity.AddAccessRule(accessRule);
+
+                // Aplicar as permissões ao diretório
+                info.SetAccessControl(dirSecurity);
+            }
+            catch(Exception ex) 
+            {
+                GenerateLogFile($"Erro ao definir segurança da pasta de erros: {ex.Message}");
+            }
         }
 
         private void CopyFiles(string PathOrign, string BackupPath)
@@ -169,7 +264,7 @@ namespace BackupService.HostedServices
                 }
                 catch (Exception ex)
                 {
-                    File.WriteAllText("C:\\Users\\miche\\Documents\\Meus Services\\Erros\\BackupService.txt", $"Exception no json: {ex.Message}");
+                    GenerateLogFile($"Exception no json: {ex.Message}");
                 }
                 return objeto;
             }
