@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System;
 using System.IO;
 using Microsoft.Extensions.Logging;
+using Microsoft.Win32;
 
 
 namespace BackupService.HostedServices
@@ -20,6 +21,8 @@ namespace BackupService.HostedServices
         public const string JsonPath = "C:\\ProgramData\\BackupManager\\JsonConfig.json";
         private int Timer = 0;
         private readonly ILogger<BackupHostedService> _logger;
+        private string KeyName = "SOFTWARE\\BackupManager";
+
 
         private Task _executingTask;
         private CancellationTokenSource _cts;
@@ -46,7 +49,8 @@ namespace BackupService.HostedServices
             {
                 try
                 {
-                    config = DesserializerJsonConfig();
+                    DateTime? lastBackup = GetRegistryKey();
+                    config = DesserializerJsonConfig(lastBackup);
                     _logger.LogInformation("Json desserializado");
                 }
                 catch (Exception ex)
@@ -55,7 +59,8 @@ namespace BackupService.HostedServices
                     GenerateLogFile(ex.Message);
                 }
 
-                
+                Thread.Sleep(Timer > 0 ? Timer : 1000);
+
                 try
                 {
                     if (config != null && config.Games != null && config.Games.Count > 0)
@@ -66,6 +71,7 @@ namespace BackupService.HostedServices
                             string finalBackupPath = $"{config.Games[i].Pathbackup}\\{config.Games[i].Path.Split('\\').LastOrDefault()}";
                             CopyFiles(copyPath, finalBackupPath);
                         }
+                        CreateOrSetValueRegistryKey();
                     }
                     else 
                     {
@@ -78,7 +84,30 @@ namespace BackupService.HostedServices
                     _logger.LogError(ex.Message);
                     GenerateLogFile(ex.Message + Environment.NewLine);
                 }
-                Thread.Sleep(Timer > 0 ? Timer : 120000);
+            }
+        }
+
+        private void CreateOrSetValueRegistryKey()
+        {
+            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(KeyName))
+            {
+                if (key != null)
+                {
+                    key.SetValue("LastBackup", DateTime.Now.ToString());
+                }
+            }
+        }
+
+        private DateTime? GetRegistryKey()
+        {
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(KeyName))
+            {
+                if (key != null)
+                {
+                    DateTime lastBackup = Convert.ToDateTime(key.GetValue("LastBackup"));
+                    return lastBackup;
+                }
+                return null;
             }
         }
 
@@ -121,7 +150,7 @@ namespace BackupService.HostedServices
             }
         }
 
-        private JsonConfig DesserializerJsonConfig()
+        private JsonConfig DesserializerJsonConfig(DateTime? lastBackup)
         {
             if (File.Exists(JsonPath))
             {
@@ -131,7 +160,11 @@ namespace BackupService.HostedServices
                     string json = File.ReadAllText(JsonPath);
                     objeto = new JsonConfig();
                     objeto = JsonConvert.DeserializeObject<JsonConfig>(json);
-                    DefineTimer(objeto);
+
+                    if (lastBackup == null || lastBackup == DateTime.MinValue)
+                        CalculateTimer(objeto);
+                    else
+                        DefineTimer(objeto, Convert.ToDateTime(lastBackup));
                 }
                 catch (Exception ex)
                 {
@@ -144,7 +177,30 @@ namespace BackupService.HostedServices
 
         }
 
-        private void DefineTimer(JsonConfig? objeto)
+        private void DefineTimer(JsonConfig config, DateTime lastBackup)
+        {
+            if (config.Horas)
+            {
+                DateTime NextBackup = lastBackup.AddHours(config.Tempo);
+                TimeSpan totalHours = NextBackup - DateTime.Now;
+                Timer = totalHours.Microseconds < 0 ? 0 : Math.Abs(Convert.ToInt32(totalHours.TotalMilliseconds));
+            }
+            if (config.Minutos)
+            {
+                DateTime NextBackup = lastBackup.AddMinutes(config.Tempo);
+                TimeSpan totalHours = NextBackup - DateTime.Now;
+                Timer = totalHours.Microseconds < 0 ? 0 : Math.Abs(Convert.ToInt32(totalHours.TotalMilliseconds));
+            }
+            if (config.Segundos)
+            {
+                DateTime NextBackup = lastBackup.AddSeconds(config.Tempo);
+                TimeSpan totalHours = NextBackup - DateTime.Now;
+                Timer = totalHours.Microseconds < 0 ? 0 : Math.Abs(Convert.ToInt32(totalHours.TotalMilliseconds));
+            }
+               
+        }
+
+        private void CalculateTimer(JsonConfig? objeto)
         {
             int Millisecond = 1000;
             int DefinedTime = objeto.Tempo;
