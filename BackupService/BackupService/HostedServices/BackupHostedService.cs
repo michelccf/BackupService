@@ -59,7 +59,8 @@ namespace BackupService.HostedServices
                     GenerateLogFile(ex.Message);
                 }
 
-                Thread.Sleep(Timer > 0 ? Timer : 1000);
+                await Task.Delay(Timer > 0 ? Timer : 1000);
+                GenerateLogFile("Iniciou Backup" + Environment.NewLine);
 
                 try
                 {
