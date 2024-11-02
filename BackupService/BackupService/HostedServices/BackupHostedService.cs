@@ -135,18 +135,11 @@ namespace BackupService.HostedServices
 
             if (!File.Exists(ErrorFile))
             {
-                File.Create(ErrorFile);
-                //DefineSecurityFile(ErrorFile);
+                using (FileStream fs = File.Create(ErrorFile))
+                {
+                }
             }
-            try
-            {
                 File.AppendAllText("C:\\ProgramData\\BackupManager\\Erros\\BackupService.txt", Message + Environment.NewLine);
-            }
-            catch (IOException ex)
-            {
-                Thread.Sleep(1000);
-                GenerateLogFile(Message);
-            }
         }
 
         private void DefineSecurityFile(string errorFile)
